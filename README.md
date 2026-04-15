@@ -1,68 +1,192 @@
-# Lead AI CRM
+# Lead Qualification API
 
-Небольшой CRM-сервис для работы с лидами и продажами, в котором используется AI-оценка лида перед передачей в продажи.
+Backend service for managing inbound leads, running AI-assisted lead scoring, and controlling handoff to sales through explicit business rules.
 
-Сервис реализован на:
+This project demonstrates:
+- asynchronous API development with FastAPI
+- PostgreSQL integration with Tortoise ORM
+- separation of API, business logic, and AI/scoring logic
+- controlled AI usage in a product workflow
+
+---
+
+## Overview
+
+The service models a simplified lead-processing workflow.
+
+A lead moves through a cold pipeline, can be analyzed by an AI-assisted scoring module, and may be transferred to sales only if specific business conditions are met.
+
+The goal of the project is to show how AI can be integrated into a backend system as a **decision-support component**, not as a fully autonomous mechanism.
+
+---
+
+## Key Features
+
+- create and retrieve leads
+- manage lead stages with transition validation
+- run AI-assisted lead scoring
+- generate a recommendation for the next step
+- validate handoff to sales
+- automatically create a `Sale` record on successful transfer
+
+---
+
+## Tech Stack
 
 - Python 3.12
 - FastAPI
-- Tortoise ORM + PostgreSQL
+- PostgreSQL
+- Tortoise ORM
 - Docker / Docker Compose
 
 ---
 
-## Содержание
+## Business Rules
 
-- [Запуск](#запуск)
-- [Структура проекта](#структура-проекта)
-- [Основные сущности](#основные-сущности)
-- [Как работает система](#как-работает-система)
-- [Где используется AI и почему](#где-используется-ai-и-почему)
-- [Какие данные отдаются AI](#какие-данные-отдаются-ai)
-- [Какие решения принимает человек](#какие-решения-принимает-человек)
-- [Что бы я усложнила в реальном проекте](#что-бы-я-усложнила-в-реальном-проекте)
+### Lead Pipeline
 
-## Запуск
+A cold lead moves through the following stages:
 
-### Вариант 1. Через Docker Compose (рекомендуется)
+```text
+new → contacted → qualified → transferred
+                           ↘ lost
+```
 
-Нужны только Docker и Docker Compose.
+### Stage Transition Rules
+
+- stage skipping is not allowed
+- a lead can be moved to `lost` from any non-final stage
+- final stages (`transferred`, `lost`) are immutable
+
+### Sales Handoff Rules
+
+A lead can be moved to `transferred` only if:
+
+- `ai_score >= 0.6`
+- `business_domain` is defined
+
+If the conditions are met:
+- the lead stage becomes `transferred`
+- a `Sale` record is created
+
+Otherwise, the API returns an error.
+
+---
+
+## AI-Assisted Scoring
+
+The AI/scoring module analyzes a lead using:
+
+- `source`
+- `stage`
+- `activity_count`
+- `business_domain`
+
+It returns:
+
+- `score` — estimated probability of a successful deal
+- `recommendation` — recommended next action
+- `reason` — short explanation of the result
+
+Example response:
+
+```json
+{
+  "score": 0.78,
+  "recommendation": "transfer_to_sales",
+  "reason": "lead has high activity and clear business domain"
+}
+```
+
+### Why AI Does Not Make the Final Decision
+
+In this project, AI is used as an assistive module:
+- it evaluates the lead
+- suggests the next step
+- supports the manager's decision-making
+
+Final control remains with the system's business rules and user actions. This keeps the workflow deterministic and prevents AI from autonomously making critical product decisions.
+
+---
+
+## API Overview
+
+Main endpoints:
+
+- `POST /leads/` — create a lead
+- `GET /leads/{id}` — get a lead by ID
+- `PATCH /leads/{id}/stage` — update the lead stage
+- `POST /leads/{id}/analyze` — run AI analysis for a lead
+
+After startup, the API documentation is available at:
+
+- `http://localhost:8000/docs`
+
+---
+
+## Project Structure
+
+```text
+app/
+  api/
+    leads.py
+  services/
+    ai_service.py
+    lead_service.py
+  models.py
+  schemas.py
+  main.py
+```
+
+### Responsibility by Layer
+
+- `app/api/leads.py` — HTTP API and request handling
+- `app/services/lead_service.py` — lead and sales business logic
+- `app/services/ai_service.py` — AI/scoring module
+- `app/models.py` — ORM models
+- `app/schemas.py` — Pydantic schemas
+- `app/main.py` — application entry point and initialization
+
+---
+
+## Run with Docker Compose
+
+Requirements:
+- Docker
+- Docker Compose
 
 ```bash
 git clone https://github.com/machinatororis/lead-ai-crm.git
 cd lead-ai-crm
-
 docker compose up --build
 ```
 
-После запуска:
+After startup:
 
-* API доступно по адресу: ```http://localhost:8000```
-* Healthcheck: ```http://localhost:8000/health```
-* Swagger UI: ```http://localhost:8000/docs```
+- API: `http://localhost:8000`
+- Healthcheck: `http://localhost:8000/health`
+- Swagger UI: `http://localhost:8000/docs`
 
-В Docker поднимаются два сервиса:
+Services:
+- `db` — PostgreSQL
+- `app` — FastAPI application
 
-* ```db``` - PostgreSQL 16
-* ```app``` - FastAPI приложение
+---
 
-Приложение подключается к БД через строку подключения из переменной окружения ```DB_URL```, которая задаётся в ```docker-compose.yml```:
+## Run Locally
 
-```DB_URL=postgres://postgres:postgres@db:5432/lead_ai_crm```
+### 1. Clone the Repository
 
-### Вариант 2. Локальный запуск без Docker
-
-#### 1. Клонировать репозиторий
-
-```
+```bash
 git clone https://github.com/machinatororis/lead-ai-crm.git
 cd lead-ai-crm
 ```
 
-#### 2. Поднять PostgreSQL
+### 2. Start PostgreSQL
 
-Например, через Docker:
-```
+For example, with Docker:
+
+```bash
 docker run --name lead-db \
   -e POSTGRES_DB=lead_ai_crm \
   -e POSTGRES_USER=postgres \
@@ -71,215 +195,103 @@ docker run --name lead-db \
   -d postgres:16
 ```
 
-#### 3. Настроить переменные окружения
+### 3. Configure Environment Variables
 
-Скопировать пример ```.env```:
+Create a `.env` file based on `.env.example`:
 
-```
+```bash
 cp .env.example .env
 ```
 
-По умолчанию там:
+Example:
 
-```
+```env
 DB_URL=postgres://postgres:postgres@localhost:5432/lead_ai_crm
 ```
 
-#### 4. Установить зависимости и запустить приложение
+### 4. Install Dependencies and Run the App
 
-```
+```bash
 python -m venv venv
-# Windows:
+```
+
+Windows:
+
+```bash
 venv\Scripts\activate
-# Linux / macOS:
-# source venv/bin/activate
+```
 
+Linux / macOS:
+
+```bash
+source venv/bin/activate
+```
+
+Then install dependencies and start the server:
+
+```bash
 pip install -r requirements.txt
-
 uvicorn app.main:app --reload
 ```
 
-После этого:
+After startup:
 
-* Healthcheck: ```http://localhost:8000/health```
-* Swagger UI: ```http://localhost:8000/docs```
+- Healthcheck: `http://localhost:8000/health`
+- Swagger UI: `http://localhost:8000/docs`
 
-## Структура проекта
+---
 
-```
-app/
-  api/
-    leads.py          # API (FastAPI роутер для работы с лидами)
-  services/
-    ai_service.py     # AI-сервис: оценка лида
-    lead_service.py   # Бизнес-логика работы с лидами и продажами
-  models.py           # Модели Tortoise ORM (Lead, Sale)
-  schemas.py          # Pydantic-схемы для API
-  main.py             # Точка входа, инициализация FastAPI и Tortoise ORM
-```
+## Main Entities
 
-Разделение слоёв:
+### Lead
 
-* API ```app/api/leads.py```
-* Бизнес-логика ```app/services/lead_service.py```
-* AI-сервис ```app/services/ai_service.py```
+Fields:
+- `source` — lead source (`scanner`, `partner`, `manual`)
+- `stage` — current lead stage
+- `business_domain` — business domain
+- `activity_count` — number of interactions
+- `ai_score` — estimated deal probability
+- `ai_recommendation` — AI recommendation
+- `ai_reason` — explanation of the AI result
 
-## Основные сущности
+### Sale
 
-#### Lead
+Created automatically when a lead is successfully transferred to sales.
 
-Холодный лид, который проходит этапы воронки:
+---
 
-```
-new -> contacted -> qualified -> transferred / lost
-```
+## Example Workflow
 
-#### Поля:
+1. A manager creates a new lead  
+2. The lead moves through the early stages of the cold pipeline  
+3. The user runs AI analysis  
+4. The system stores `score`, `recommendation`, and `reason`  
+5. On transfer attempt, the service validates the business conditions  
+6. If the conditions are met, a `Sale` record is created
 
-* ```source``` источник лида (scanner, partner, manual)
-* ```stage``` текущий этап (new, contacted, qualified, transferred, lost)
-* ```business_domain``` бизнес-домен лида (опционально)
-* ```activity_count``` количество сообщений / активности по лиду
-* ```ai_score``` AI-оценка вероятности сделки (0..1)
-* ```ai_recommendation``` рекомендация AI (transfer_to_sales, continue_qualification, drop_lead)
-* ```ai_reason``` текстовое объяснение решения AI
+---
 
-#### Основные эндпоинты
+## Production Considerations
 
-Все эндпоинты доступны под префиксом /leads (см. Swagger http://localhost:8000/docs
-).
+In a production-ready version, I would extend the project with:
 
-* ```POST /leads/``` создать лида
-* ```GET /leads/{id}``` получить лида
-* ```PATCH /leads/{id}/stage``` обновить стадию лида
-* ```POST /leads/{id}/analyze``` запустить AI-оценку лида
+- database migrations
+- automated tests for the service layer and business rules
+- centralized configuration management
+- structured logging and metrics
+- more granular error handling
+- background jobs or queues for AI analysis
+- authentication and role-based access control
+- external AI/ML integration instead of rule-based scoring
 
-## Как работает система
+---
 
-### 1. Создание лида
+## Project Focus
 
-Менеджер создаёт лида через:
+This project focuses on backend design for a lead qualification workflow where AI is integrated into a clear business process and constrained by explicit system rules.
 
-```POST /leads/```
-
-Передаёт:
-
-* ```source``` (обязателен)
-* ```business_domain``` (если известен)
-
-Новый лид создаётся с:
-
-```
-stage = "new"
-activity_count = 0
-ai_score = null
-```
-
-### 2. Нарастание активности
-
-Поле ```activity_count``` хранит количество взаимодействий/сообщений с лидом.
-* в реальной системе оно увеличивалось бы автоматически (по событиям),
-* в тестовом проекте - через обновление в БД или дополнительный эндпоинт.
-
-### 3. AI-оценка
-
-Когда менеджер набрал достаточно информации, он вызывает:
-
-```POST /leads/{id}/analyze```
-
-Бизнес-слой ```(lead_service.analyze_lead_and_save)``` передаёт в AI-сервис параметры лида, сохраняет результат в:
-
-```
-ai_score
-ai_recommendation
-ai_reason
-```
-
-### 4. Движение по стадиям
-
-Переходы по холодной воронке ограничены. 
-
-Допустимы только переходы вперёд на один шаг:
-
-```
-new → contacted
-contacted → qualified
-qualified → transferred
-```
-
-* в ```lost``` можно перейти с любой не финальной стадии
-* если лид уже в финальной стадии (```transferred``` или ```lost```), менять её нельзя
-
-Эти правила реализованы в ```lead_service.is_valid_stage_transition```.
-
-### 5. Передача в продажи
-
-При переходе на стадию ```transferred``` проверяются условия ТЗ:
-
-* ```ai_score >= 0.6```
-* ```business_domain``` указан
-
-Если условия не выполнены, то выбрасывается ошибка, и API отвечает ```400 Bad Request```.
-
-Если выполнены, то создаётся объект ```Sale``` и лид получает ```stage = "transferred"```.
-
-## Где используется AI и почему
-
-AI-логика вынесена в отдельный модуль:
-
-```app/services/ai_service.py```
-
-Функция ```async def analyze_lead```.
-
-AI принимает ключевые параметры лида, считает ```score``` (оценку от 0 до 1), выдает ```recommendation``` и текстовое объяснение.
-
-AI сейчас без реальной ML-модели, в реальном проекте AI-модуль можно заменить на ML-модель или на внешний AI-сервис (LLM).
-
-Вся остальная архитектура (API + бизнес-логика) от этого не поменяется.
-
-#### Какие данные отдаются AI
-
-В AI-сервис передаются только данные лида:
-
-* ```source``` источник лида (scanner, partner, manual)
-* ```stage``` текущий этап воронки
-* ```activity_count``` количество сообщений
-* ```business_domain``` бизнес-домен (или None, если неизвестен)
-
-На основе этих четырёх параметров AI:
-
-* вычисляет вероятность сделки ```(score)```
-* даёт рекомендацию ```(recommendation)```
-* формирует объяснение ```(reason)```
-
-Результат записывается в поля Lead:
-```
-ai_score
-ai_recommendation
-ai_reason
-```
-
-## Какие решения принимает человек
-
-Человек создаёт лида, проводит коммуникацию, решает, когда запускать AI-оценку, шаг за шагом перевозит лида по стадиям.
-AI не переводит лида в продажи автоматически;
-
-AI только считает оценку, рекомендует действие, ограничивает возможность передачи в продажи (через бизнес-правила).
-
-Окончательное решение остаётся за человеком и бизнес-логикой, а не за AI.
-
-## Что бы я усложнила в реальном проекте:
-
-* логи, метрики, мониторинг
-
-
-* можно сделать ml-модель, наученную на датасете исторических лидов и сделок
-* гео/язык/сегмент клиента;
-* время от создания лида до первого контакта;
-* количество/плотность коммуникаций во времени;
-* признаки по содержанию сообщений (NLP);
-
-
-* асинхронную обработку и очереди
-* авторизацию и роли, если этого требуют бизнесс процессы
-* миграции
+The main engineering goals were:
+- separating API, business logic, and AI logic
+- modeling domain constraints
+- validating stage transitions
+- using AI in a controlled, product-oriented way
