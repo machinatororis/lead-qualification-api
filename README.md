@@ -156,8 +156,8 @@ Requirements:
 - Docker Compose
 
 ```bash
-git clone https://github.com/machinatororis/lead-ai-crm.git
-cd lead-ai-crm
+git clone https://github.com/machinatororis/lead-qualification-api.git
+cd lead-qualification-api
 docker compose up --build
 ```
 
@@ -178,8 +178,8 @@ Services:
 ### 1. Clone the Repository
 
 ```bash
-git clone https://github.com/machinatororis/lead-ai-crm.git
-cd lead-ai-crm
+git clone https://github.com/machinatororis/lead-qualification-api.git
+cd lead-qualification-api
 ```
 
 ### 2. Start PostgreSQL
