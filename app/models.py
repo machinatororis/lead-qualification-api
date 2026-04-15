@@ -7,7 +7,7 @@ class Lead(models.Model):
     Этапы: new -> contacted -> qualified -> transferred / lost
     """
 
-    id = fields.IntField(pk=True)
+    id = fields.IntField(primary_key=True)
 
     source = fields.CharField(max_length=50)  # scanner / partner / manual
     stage = fields.CharField(max_length=50, default="new")  # new, contacted, ...
@@ -38,7 +38,7 @@ class Sale(models.Model):
     Этапы: new -> kyc -> agreement -> paid / lost
     """
 
-    id = fields.IntField(pk=True)
+    id = fields.IntField(primary_key=True)
 
     lead: fields.OneToOneRelation[Lead] = fields.OneToOneField(
         "models.Lead",
